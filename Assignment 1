@@ -190,12 +190,14 @@ print(hist_w)
 
 # Earnings per hour ln histogram
 hist_w_ln <- ggplot(data=earnings, aes(x=ln_earnhrs)) +
-  geom_histogram(aes(y = (..count..)/sum(..count..)), boundary=0, fill = "#440154", color = "red", size = 0.2, alpha = 0.5,  show.legend=F, na.rm=TRUE) +
-  labs(x = "Earnings per hour Ln (ln(w))",y = "Percent")+
+  geom_histogram(aes(y = (after_stat(count))/sum(count)), boundary=0, fill = "#440154", color = "red", size = 0.2, alpha = 0.5,  show.legend=F, na.rm=TRUE) +
+  labs(x = "Earnings per hour Ln",y = "Percent")+
   theme_bw() +
   scale_color_viridis(discrete = TRUE, option = "D") +
   scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
   ggtitle("Earnings per hour Ln ") 
+
+print(hist_w_ln)
 
 print(hist_w_ln)
 
