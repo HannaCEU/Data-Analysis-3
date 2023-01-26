@@ -36,7 +36,7 @@ datasummary(as.factor(marital) ~ N, data = earnings)#married and spouse present 
 
 # Creating female and hourly wage variables,age_square, and higher education degrees for complex regression
 earnings <- earnings %>% mutate(
-  sex= sex - 1, #female is 1, male is 0
+  sex= sex - 1, #binary result: female is 1, male is 0
   earnhrs = earnwke/uhours,#mutate into hourly wage variable
   ln_earnhrs = log(earnwke/uhours),#mutate into log to decide later if to use
   age_square = age^2, #mutate age as quadratic
