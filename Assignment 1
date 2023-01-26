@@ -175,7 +175,8 @@ print(cv_mat)
 ##4. Comparison of models performance 
 #After building models, Model 4 looks the best positioned based on the lower average RMSE and highest R2. However, there is only insignificant difference with model 3. Most likely, due to the fact that pay level difference within the same higher category of education for both genders is not statistically significant, despite the fact that the combined regression table shows that income on average is still lower to highly educated females as opposed to males who are highly educated. BIC as the measure of fit penalizes the model complexity and helps to avoid over-fitting, so lower BIC models are preferred. During cross-validation, among the models, Model 3 has the lowest BIC and cross validation RMSE average as it is less complex.
 
-#checking out distribution of hourly wages to decide whether to take log wage
+##Appendix. Supporting visuals
+#Checking out distribution of hourly wages to decide whether to take log wage
 # Earnings per hour histogram
 hist_w <- ggplot(data=earnings, aes(x=earnhrs)) +
   geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = 5, boundary=0, fill = "#440154", color = "red", linewidth = 0.2, alpha = 0.5,  show.legend=F, na.rm=TRUE) +
@@ -198,10 +199,38 @@ hist_w_ln <- ggplot(data=earnings, aes(x=ln_earnhrs)) +
 
 print(hist_w_ln)
 
-#First graph has more symmetric distribution and based on that I will be using the simple wage per hour, rather than a log.
+#First graph has more symmetric distribution and based on that I will be using the simple wage per hour, rather than a log. It is also more beneficial for interpretation of the target variable.
 
-# Graph to include earn per hour by gender and age
-earnings_mean<- earnings %>%  group_by(sex, age) %>% summarise_at(vars(earnhrs), list(name=mean))
+# Box plot of hourly wage for each gender
+jitter_gender <- ggplot(earnings,aes(earnings$sex, earnhrs, color = "#440154" )) + 
+  geom_boxplot(alpha = 0.1) + 
+  geom_jitter(height = 0, width = 0.1, alpha = 0.2) +
+  scale_color_viridis(option = "D", discrete = TRUE)+
+  scale_fill_viridis(option = "D", discrete = TRUE) +
+  theme_bw() +
+  theme(legend.position = "none", panel.border = element_blank(), axis.text=element_text(size=8), plot.title = element_text(size = 12L, face = "bold", hjust = 0.5) ) +
+  labs(x = "Gender", y = "Earnings per hour") +
+  ggtitle("Gender Earning per hour ")
+
+print(jitter_gender)
+
+# loess for age and earning per hour
+
+scatter_age <- ggplot( earnings, aes(x = age, y = earnhrs)) +
+  geom_point(size=0.5,alpha=0.6, na.rm = T, color = "#440154") +
+  geom_smooth(method="loess" , formula = y ~ x , na.rm = T, color = "#fde725" )+
+  theme_bw() +
+  scale_color_viridis(option = "D", discrete = TRUE) +
+  scale_fill_viridis(option = "D", discrete = TRUE) +
+  labs(x = "Age",y = "Earnings per Hour in USD", color = "Gender", fill = "Gender") +
+  theme(panel.border = element_blank(), axis.text=element_text(size=8), plot.title = element_text(size = 12L, face = "bold", hjust = 0.5)) +
+  ggtitle("Loess with age")
+
+print(scatter_age)
+
+#Earnings per hour by gender and age 
+earnings_mean<- earnings %>%  group_by(sex, age) %>% summarise_at(vars(earnhrs), list(name = mean))
+
 ggplot(earnings_mean)+
   geom_smooth(aes(x=age, y=name, color=as.factor(sex)), method = 'loess')+
   labs(
@@ -209,4 +238,3 @@ ggplot(earnings_mean)+
     y= "Mean earning per hour",
     x= "Age",
     color="Gender")
-
