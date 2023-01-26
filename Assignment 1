@@ -1,1 +1,199 @@
+#### SET UP
+# CLEAR MEMORY
+rm(list=ls())
+
+# Loading the Libraries
+library(tidyverse)
+library(modelsummary)
+library(fixest)
+library(kableExtra)
+library(data.table)
+library(ggplot2)
+library(GGally)
+library(viridis)
+library(caret)
+library(grid)
+library(dplyr)
+library(gridExtra)
+library(grid)
+library(viridis)
+library(lmtest)
+library(sandwich)
+
+# Downloading the data
+earnings <- read_csv('https://osf.io/4ay9x/download')
+
+# Filter for Lawyers, Judges, Magistrates and other judicial workers 
+earnings <- earnings %>% filter(occ2012 == 2100)
+
+# Additional filtering on hours worked per week as at least part time job and a minimum high school diploma
+earnings <- earnings %>% filter(uhours>=20 & grade92>=39)
+
+# check out the data summary and variables to model sample
+summary(earnings)
+datasummary(as.factor(race) ~ N, data = earnings)# white=1, non white > 1
+datasummary(as.factor(marital) ~ N, data = earnings)#married and spouse present 1-2
+
+# Creating female and hourly wage variables,age_square, and higher education degrees for complex regression
+earnings <- earnings %>% mutate(
+  sex= sex - 1, #female is 1, male is 0
+  earnhrs = earnwke/uhours,#mutate into hourly wage variable
+  ln_earnhrs = log(earnwke/uhours),#mutate into log to decide later if to use
+  age_square = age^2, #mutate age as quadratic
+  ed_MA=as.numeric(grade92==44),
+  ed_Profess = as.numeric(grade92==45),
+  ed_PhD = as.numeric(grade92==46))
+
+summary(earnings)
+
+# Model regressions 
+m1 <- as.formula(earnhrs ~ sex)
+m2 <- as.formula(earnhrs ~ sex + age + age_square)
+m3 <- as.formula(earnhrs ~ sex + age + age_square + ed_MA + ed_Profess + ed_PhD)
+#for a complex regression
+m4 <- as.formula(earnhrs ~ sex + ed_MA + ed_Profess + ed_PhD + age + age_square + sex*ed_MA + sex*ed_Profess + sex*ed_PhD)
+
+reg1<-lm(m1, data = earnings)
+reg2<-lm(m2, data = earnings)
+reg3<-lm(m3, data = earnings)
+reg4<-lm(m4, data = earnings)
+
+model1<-feols(m1, data = earnings, vcov = 'hetero')
+model2<-feols(m2, data = earnings, vcov = 'hetero')
+model3<-feols(m3, data = earnings, vcov = 'hetero')
+model4<-feols(m4, data = earnings, vcov = 'hetero')
+
+regtable<-etable(model1,model2,model3,model4, tex = FALSE)
+
+#regtable
+kable(regtable, "latex") %>% column_spec(2:7,width = "5.5em") %>%  
+  kable_styling(bootstrap_options = "bordered", full_width = FALSE, repeat_header_text = "Regression table") %>% 
+  row_spec(row = 1, bold =TRUE ) %>%
+  column_spec(column = 1, width = "6em", bold = TRUE,
+              border_left = TRUE) %>%
+  column_spec(column = 7, width = "6em",
+              border_right = TRUE) 
+
+print(regtable)
+
+###	Compare model performance of these models (a) RMSE in the full sample, (2) cross-validated RMSE and (c) BIC in the full sample. 
+
+##Creating regression comparison
+2*(reg1$rank+1) - 2*logLik(reg1)
+AIC(reg1)
+
+(reg1$rank+1)*log(nrow(earnings)) - 2*logLik(reg1)
+BIC(reg1)
+
+models <- c("reg1", "reg2","reg3", "reg4")
+AIC <- c()
+BIC <- c()
+RMSE <- c()
+RSquared <- c()
+regr <- c()
+k <- c()
+
+for ( i in 1:length(models)){
+  AIC[i] <- AIC(get(models[i]))
+  BIC[i] <- BIC(get(models[i]))
+  RMSE[i] <- RMSE(predict(get(models[i])), get(models[i])$model$earnhrs)
+  RSquared[i] <-summary(get(models[i]))$r.squared
+  regr[[i]] <- coeftest(get(models[i]), vcov = sandwich)
+  k[i] <- get(models[i])$rank -1
+}
+
+#Creating comparison data table
+eval <- data.frame(models, k, RSquared, RMSE, BIC)
+
+# gsub(pattern, replacement, x) 
+
+eval <- eval %>%
+  mutate(models = paste0("(",gsub("reg","",models),")")) %>%
+  rename(Model = models, "R-squared" = RSquared, "Training RMSE" = RMSE, "N predictors" = k)
+
+print(eval)
+
+# Simple k-fold cross validation setup:
+# set number of folds to use (must be less than the no. observations)
+k <- 4
+
+# Model 1
+set.seed(1238)
+cv1 <- train(m1, earnings, method = "lm", trControl = trainControl(method = "cv", number = k))
+
+# Model 2
+set.seed(1238)
+cv2 <- train(m2,earnings, method = "lm", trControl = trainControl(method = "cv", number = k))
+
+# Model 3
+set.seed(1238)
+cv3 <- train(m3, earnings, method = "lm", trControl = trainControl(method = "cv", number = k))
+
+# Model 4
+set.seed(1238)
+cv4 <- train(m4, earnings, method = "lm", trControl = trainControl(method = "cv", number = k))
+
+
+# Calculate RMSE for each fold and the average RMSE 
+cv <- c("cv1", "cv2", "cv3", "cv4")
+rmse_cv <- c()
+
+
+for(i in 1:length(cv)){
+  rmse_cv[i] <- sqrt((get(cv[i])$resample[[1]][1]^2 +
+                        get(cv[i])$resample[[1]][2]^2 +
+                        get(cv[i])$resample[[1]][3]^2 +
+                        get(cv[i])$resample[[1]][4]^2)/4)
+}
+
+# summarize results in a table
+cv_mat <- data.frame(rbind(cv1$resample[4], "Average"),
+                     rbind(cv1$resample[1], rmse_cv[1]),
+                     rbind(cv2$resample[1], rmse_cv[2]),
+                     rbind(cv3$resample[1], rmse_cv[3]),
+                     rbind(cv4$resample[1], rmse_cv[4])
+)
+
+colnames(cv_mat)<-c("Resample","Model1", "Model2", "Model3", "Model4")
+cv_mat <- cv_mat %>% kbl(caption = "4-Fold Cross Validation and RMSE", booktabs = T) %>% kable_styling(full_width = T)
+
+print(cv_mat)
+
+## Model 4 is the best positioned based on the lower average RMSE and highest R squared. However, there is only insignificant difference with model 3 due to the fact that there must be less difference in pay level difference within the same given category of education. It is, indeed, confirmed by the fact that the derived pay difference is statistically insignificant.
+
+###END 
+#checking out distribution of hourly wages to decide whether to take log wage
+# Earnings per hour histogram
+hist_w <- ggplot(data=earnings, aes(x=earnhrs)) +
+  geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = 5, boundary=0, fill = "#440154", color = "red", linewidth = 0.2, alpha = 0.5,  show.legend=F, na.rm=TRUE) +
+  labs(x = "Earnings per hour",y = "Percent")+
+  theme_bw() +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Earnings per hour") 
+  
+print(hist_w)
+
+# Earnings per hour ln histogram
+hist_w_ln <- ggplot(data=earnings, aes(x=ln_earnhrs)) +
+  geom_histogram(aes(y = (..count..)/sum(..count..)), boundary=0, fill = "#440154", color = "red", size = 0.2, alpha = 0.5,  show.legend=F, na.rm=TRUE) +
+  labs(x = "Earnings per hour Ln (ln(w))",y = "Percent")+
+  theme_bw() +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Earnings per hour Ln ") 
+
+print(hist_w_ln)
+
+#First graph has more symmetric distribution and based on that I will be using the simple wage per hour, rather than a log.
+
+# Graph to include earn per hour by gender and age
+earnings_mean<- earnings %>%  group_by(sex, age) %>% summarise_at(vars(earnhrs), list(name=mean))
+ggplot(earnings_mean)+
+  geom_smooth(aes(x=age, y=name, color=as.factor(sex)), method = 'loess')+
+  labs(
+    title = "Average earning per hour conditional on age by gender",
+    y= "Mean earning per hour",
+    x= "Age",
+    color="Gender")
 
